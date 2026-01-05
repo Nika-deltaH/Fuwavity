@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ComboGame</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- Canvas will be injected here by Matter.js or we create it manually -->
+        <div id="ui-layer">
+            <div id="score-board">Score: <span id="score">0</span></div>
+            <button id="retry-btn-top" title="Reset Game">↻</button>
+            <div id="game-over-screen" class="hidden">
+                <h1>Game Over</h1>
+                <p>Score: <span id="final-score">0</span></p>
+                <button id="retry-btn">Retry</button>
+                <button id="share-btn">Share</button>
+            </div>
+            <button id="go-btn">GO!</button>
+        </div>
+    </div>
+
+    <!-- Matter.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
