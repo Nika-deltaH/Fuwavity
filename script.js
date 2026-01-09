@@ -22,7 +22,7 @@ const BALL_COLORS = [
 
 // --- IMAGE REPLACEMENT CONFIGURATION ---
 // To use images:
-// 1. Put images named 001.png... 012.png in the 'assets' folder.
+// 1. Put images named 001.PNG... 012.PNG in the 'assets' folder.
 // 2. Set USE_IMAGES = true;
 const USE_IMAGES = true;
 // ---------------------------------------
@@ -127,7 +127,7 @@ function init() {
                 // Note: creating new image every frame is bad practice usually, but for low-freq preview works here.
                 // Ideally we pre-load, but assuming browser cache handles it.
                 const img = new Image();
-                img.src = `assets/${imageIndex}.png`;
+                img.src = `assets/${imageIndex}.PNG`;
 
                 const size = previewBall.radius * 2;
 
@@ -293,7 +293,7 @@ function shoot() {
 
     const renderConfig = USE_IMAGES ? {
         sprite: {
-            texture: `assets/${String(previewBall.level + 1).padStart(3, '0')}.png`,
+            texture: `assets/${String(previewBall.level + 1).padStart(3, '0')}.PNG`,
             xScale: (previewBall.radius * 2) / 250, // Source: 250px
             yScale: (previewBall.radius * 2) / 250
         }
@@ -345,7 +345,7 @@ function mergeBalls(bodyA, bodyB) {
 
     const renderConfig = USE_IMAGES ? {
         sprite: {
-            texture: `assets/${String(newLevel + 1).padStart(3, '0')}.png`,
+            texture: `assets/${String(newLevel + 1).padStart(3, '0')}.PNG`,
             xScale: (radius * 2) / 250, // Source: 250px
             yScale: (radius * 2) / 250
         }
@@ -417,7 +417,7 @@ if (screenshotBtn) {
             if (retryBtnTop) retryBtnTop.style.display = 'block';
 
             const link = document.createElement('a');
-            link.download = `ComboGame_Score_${score}.png`;
+            link.download = `ComboGame_Score_${score}.PNG`;
             link.href = canvas.toDataURL();
             link.click();
         }).catch(err => {
@@ -444,3 +444,4 @@ if (shareBtn) {
 
 // Start
 init();
+
