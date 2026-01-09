@@ -67,9 +67,9 @@ const mergeSound = new Audio('assets/merge.mp3');
 
 // Asset Lists
 const IMAGES_TO_LOAD = [
-    'assets/001.png', 'assets/002.png', 'assets/003.png', 'assets/004.png',
-    'assets/005.png', 'assets/006.png', 'assets/007.png', 'assets/008.png',
-    'assets/009.png', 'assets/010.png', 'assets/011.png', 'assets/012.png'
+    'assets/001.PNG', 'assets/002.PNG', 'assets/003.PNG', 'assets/004.PNG',
+    'assets/005.PNG', 'assets/006.PNG', 'assets/007.PNG', 'assets/008.PNG',
+    'assets/009.PNG', 'assets/010.PNG', 'assets/011.PNG', 'assets/012.PNG'
 ];
 const ASSET_IMAGES = {}; // Cache for preloaded images
 
@@ -586,9 +586,9 @@ if (screenshotBtn) {
 
         // 5. Download
         try {
-            const dataURL = captureCanvas.toDataURL('image/png');
+            const dataURL = captureCanvas.toDataURL('image/PNG');
             const link = document.createElement('a');
-            link.download = `ComboGame_Score_${score}.png`;
+            link.download = `ComboGame_Score_${score}.PNG`;
             link.href = dataURL;
             link.click();
         } catch (err) {
