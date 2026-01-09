@@ -117,8 +117,8 @@ async function preloadAssets() {
 function init() {
     // Create Engine
     engine = Engine.create({
-        positionIterations: 10, // Increase accuracy (Default 6)
-        velocityIterations: 10  // Increase stability (Default 4)
+        positionIterations: 6, // Optimization: Balanced accuracy (default 6)
+        velocityIterations: 4  // Optimization: Balanced stability (default 4)
     });
     engine.world.gravity.y = 0;
 
@@ -132,7 +132,8 @@ function init() {
             wireframes: false,
             background: 'transparent',
             // IMPORTANT: For images to look good when scaled
-            pixelRatio: window.devicePixelRatio
+            // Optimization: Cap pixelRatio at 2 to prevent massive GPU load on phones (3x/4x screens)
+            pixelRatio: Math.min(window.devicePixelRatio, 2)
         }
     });
 
@@ -243,7 +244,7 @@ function init() {
             if (distance > 10) {
                 // Adaptive Gravity: Strong far away, weak near center to prevent crushing/jitter
                 let gravityStrength = 0.001;
-                if (distance < 30) gravityStrength = 0.0005;
+                if (distance < 40) gravityStrength = 0.0003;
 
                 const forceMagnitude = gravityStrength * body.mass;
                 Body.applyForce(body, body.position, {
@@ -454,7 +455,7 @@ function mergeBalls(bodyA, bodyB) {
     };
 
     const newBody = Bodies.circle(midX, midY, radius, {
-        restitution: 0.4,
+        restitution: 0.3,
         friction: 0.05,
         frictionAir: 0.02,
         render: renderConfig
