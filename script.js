@@ -5,7 +5,7 @@ const GAME_SIZE = 460; // Canvas size (Internal logical size)
 const CENTER = { x: GAME_SIZE / 2, y: GAME_SIZE / 2 };
 const BOWL_RADIUS = 150; // 300px diameter (Requested)
 const ORBIT_RADIUS = 200; // 400px diameter (Requested)
-const GAMEOVER_RADIUS = 152.5; // 305px diameter
+const GAMEOVER_RADIUS = 155; // 310px diameter
 const WARNING_TRIGGER_RADIUS = 145; // 290px diameter
 const WARNING_LINE_RADIUS = 150; // 300px diameter
 
@@ -71,10 +71,11 @@ const IMAGES_TO_LOAD = [
     'assets/005.png', 'assets/006.png', 'assets/007.png', 'assets/008.png',
     'assets/009.png', 'assets/010.png', 'assets/011.png', 'assets/012.png'
 ];
+const ASSET_IMAGES = {}; // Cache for preloaded images
 
 // Audio Init Volume
 let bgmVolume = 0.5;
-let sfxVolume = 0.5;
+let sfxVolume = 1.0;
 
 bgm.volume = bgmVolume;
 clickSound.volume = sfxVolume;
@@ -99,7 +100,12 @@ async function preloadAssets() {
 
     IMAGES_TO_LOAD.forEach(src => {
         const img = new Image();
-        img.onload = updateProgress;
+        img.onload = () => {
+            // Extract simple filename key (e.g., '001')
+            const key = src.split('/').pop().split('.')[0];
+            ASSET_IMAGES[key] = img;
+            updateProgress();
+        };
         img.onerror = (e) => {
             console.error('Failed to load image:', src, e);
             updateProgress(); // Continue anyway to avoid hanging
@@ -110,7 +116,10 @@ async function preloadAssets() {
 
 function init() {
     // Create Engine
-    engine = Engine.create();
+    engine = Engine.create({
+        positionIterations: 10, // Increase accuracy (Default 6)
+        velocityIterations: 10  // Increase stability (Default 4)
+    });
     engine.world.gravity.y = 0;
 
     // Create Renderer
@@ -177,19 +186,23 @@ function init() {
         // Draw Preview Ball
         if (previewBall && isPlaying) {
             if (USE_IMAGES) {
-                // Image Rendering
+                // Image Rendering using Cached Object
                 const imageIndex = String(previewBall.level + 1).padStart(3, '0');
-                // Note: creating new image every frame is bad practice usually, but for low-freq preview works here.
-                // Ideally we pre-load, but assuming browser cache handles it.
-                const img = new Image();
-                img.src = `assets/${imageIndex}.PNG`;
 
-                const size = previewBall.radius * 2;
-
-                ctx.save();
-                ctx.translate(previewBall.x, previewBall.y);
-                ctx.drawImage(img, -previewBall.radius, -previewBall.radius, size, size);
-                ctx.restore();
+                if (ASSET_IMAGES[imageIndex]) {
+                    const img = ASSET_IMAGES[imageIndex];
+                    const size = previewBall.radius * 2;
+                    ctx.save();
+                    ctx.translate(previewBall.x, previewBall.y);
+                    ctx.drawImage(img, -previewBall.radius, -previewBall.radius, size, size);
+                    ctx.restore();
+                } else {
+                    // Fallback if not loaded (shouldn't happen with preloader)
+                    ctx.beginPath();
+                    ctx.arc(previewBall.x, previewBall.y, previewBall.radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = previewBall.color;
+                    ctx.fill();
+                }
             } else {
                 // Fallback Color Mode
                 ctx.beginPath();
@@ -228,12 +241,33 @@ function init() {
 
             // Gravity
             if (distance > 10) {
-                const forceMagnitude = 0.0005 * body.mass;
+                // Adaptive Gravity: Strong far away, weak near center to prevent crushing/jitter
+                let gravityStrength = 0.001;
+                if (distance < 30) gravityStrength = 0.0005;
+
+                const forceMagnitude = gravityStrength * body.mass;
                 Body.applyForce(body, body.position, {
                     x: (dx / distance) * forceMagnitude,
                     y: (dy / distance) * forceMagnitude
                 });
             }
+
+            // Stabilization / Braking
+            if (body.speed < 1 && !body.isStatic) {
+                // 1. Slow down gradually (95% speed per frame)
+                Body.setVelocity(body, {
+                    x: body.velocity.x * 0.95,
+                    y: body.velocity.y * 0.95
+                });
+
+                // 2. Final Stop: If it's crawling very slow, force it to stop
+                if (body.speed < 0.03) {
+                    Body.setVelocity(body, { x: 0, y: 0 });
+                    Body.setAngularVelocity(body, 0);
+                }
+            }
+
+
 
             // Check Distances
             const edgeDist = distance + body.circleRadius;
@@ -249,7 +283,7 @@ function init() {
 
             // Game Over Check
             if (edgeDist > GAMEOVER_RADIUS) {
-                if (body.speed < 0.5 && body.id !== (lastShotBodyId || -1)) {
+                if (body.speed < 0.2 && body.id !== (lastShotBodyId || -1)) {
                     endGame();
                 }
             }
@@ -362,9 +396,9 @@ function shoot() {
     };
 
     const body = Bodies.circle(previewBall.x, previewBall.y, previewBall.radius, {
-        restitution: 0.5,
+        restitution: 0.4,
         friction: 0.05,
-        frictionAir: 0.02,
+        frictionAir: 0.03,
         render: renderConfig
     });
 
@@ -420,7 +454,7 @@ function mergeBalls(bodyA, bodyB) {
     };
 
     const newBody = Bodies.circle(midX, midY, radius, {
-        restitution: 0.5,
+        restitution: 0.4,
         friction: 0.05,
         frictionAir: 0.02,
         render: renderConfig

@@ -10,26 +10,8 @@ html {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     touch-action: none;
     /* Prevent zoom/scroll on mobile */
-    background: #2a2a2a;
-    /* Fallback */
-    /* Dynamic animated background */
-    background: linear-gradient(135deg, #241e25 0%, #251e36 50%, #182531 100%);
-    background-size: 400% 400%;
-    animation: gradientBG 15s ease infinite;
-}
-
-@keyframes gradientBG {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
-    }
+    background: #251e36;
+    /* Solid Color Performance Fix */
 }
 
 /* Loading Screen */
@@ -67,6 +49,7 @@ html {
         transform: rotate(360deg);
     }
 }
+
 
 #main-wrapper {
     display: flex;
@@ -112,7 +95,8 @@ canvas {
     position: absolute;
     top: -50px;
     /* Move above the game container */
-    left: 20px;
+    left: 50px;
+    /* Adjusted inwards 20->50 */
     color: white;
     font-size: 24px;
     font-weight: bold;
@@ -123,7 +107,8 @@ canvas {
 .top-controls {
     position: absolute;
     top: -50px;
-    right: 20px;
+    right: 50px;
+    /* Adjusted inwards 20->50 */
     display: flex;
     gap: 10px;
     z-index: 5;
