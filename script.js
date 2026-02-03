@@ -3,11 +3,11 @@ const { Engine, Render, Runner, World, Bodies, Body, Events, Composite, Vector, 
 // Configuration
 const GAME_SIZE = 460; // Canvas size (Internal logical size)
 const CENTER = { x: GAME_SIZE / 2, y: GAME_SIZE / 2 };
-const BOWL_RADIUS = 150; // 300px diameter (Requested)
-const ORBIT_RADIUS = 200; // 400px diameter (Requested)
-const GAMEOVER_RADIUS = 155; // 310px diameter
-const WARNING_TRIGGER_RADIUS = 145; // 290px diameter
-const WARNING_LINE_RADIUS = 150; // 300px diameter
+const BOWL_RADIUS = 160; // 320px diameter 
+const ORBIT_RADIUS = 200; // 400px diameter 
+const GAMEOVER_RADIUS = 175; // 350px diameter
+const WARNING_TRIGGER_RADIUS = 155; // 310px diameter
+const WARNING_LINE_RADIUS = 160; // 320px diameter
 
 // Sizes: 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130 (Diameters)
 // Radii: 12.5, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65
