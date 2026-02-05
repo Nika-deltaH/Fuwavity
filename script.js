@@ -5,7 +5,7 @@ const GAME_SIZE = 460; // Canvas size (Internal logical size)
 const CENTER = { x: GAME_SIZE / 2, y: GAME_SIZE / 2 };
 const BOWL_RADIUS = 160; // 320px diameter 
 const ORBIT_RADIUS = 200; // 400px diameter 
-const GAMEOVER_RADIUS = 175; // 350px diameter
+const GAMEOVER_RADIUS = 175; // 360px diameter
 const WARNING_TRIGGER_RADIUS = 155; // 310px diameter
 const WARNING_LINE_RADIUS = 160; // 320px diameter
 
@@ -464,7 +464,7 @@ function mergeBalls(bodyA, bodyB) {
     Body.setVelocity(newBody, { x: (Math.random() - 0.5), y: (Math.random() - 0.5) });
 
     // Pop Animation
-    Body.scale(newBody, 1.2, 1.2);
+    Body.scale(newBody, 1.1, 1.1);
     newBody.isPopping = true;
 
     World.add(engine.world, newBody);
