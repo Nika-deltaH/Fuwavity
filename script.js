@@ -42,6 +42,7 @@ let upcomingLevels = [];
 
 // The ball currently orbiting and waiting to be dropped
 let previewBall = null;
+let spawnTimeoutId = null;
 let orbitAngle = 0;
 let orbitSpeed = 0.02;
 
@@ -456,9 +457,12 @@ function shoot() {
     playSound(clickSound);
 
     World.add(engine.world, body);
-    previewBall = null;
 
-    setTimeout(spawnPreview, 500);
+    if (spawnTimeoutId) {
+        clearTimeout(spawnTimeoutId);
+    }
+    previewBall = null;
+    spawnTimeoutId = setTimeout(spawnPreview, 500);
 }
 
 function mergeBalls(bodyA, bodyB) {
@@ -545,6 +549,11 @@ function endGame() {
 }
 
 function resetGame() {
+    if (spawnTimeoutId) {
+        clearTimeout(spawnTimeoutId);
+        spawnTimeoutId = null;
+    }
+
     World.clear(engine.world);
     Engine.clear(engine);
     score = 0;
@@ -553,6 +562,7 @@ function resetGame() {
     orbitSpeed = 0.02;
     isGameOver = false;
     upcomingLevels = [];
+    previewBall = null;
     // Hide Header and Footer, Show In-Game UI
     gameHeader.classList.add('hidden');
     gameFooter.classList.add('hidden');
@@ -668,10 +678,10 @@ if (screenshotBtn) {
 
 if (shareBtn) {
     shareBtn.addEventListener('click', () => {
-        const url = "https://nika-deltah.github.io/ComboGame/";
-        const text = `I scored ${score} in ComboGame! Can you beat me? ${url}`;
+        const url = "https://nikaworx.com/Fuwavity/";
+        const text = `I scored ${score} in Fuwavity! Can you beat me? ${url}`;
         if (navigator.share) {
-            navigator.share({ title: 'ComboGame', text: text, url: url });
+            navigator.share({ title: 'Fuwavity', text: text, url: url });
         } else {
             navigator.clipboard.writeText(text);
             alert('Copied to clipboard!');
