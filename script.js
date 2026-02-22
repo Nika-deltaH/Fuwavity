@@ -35,6 +35,11 @@ let isGameOver = false;
 let isPlaying = false;
 let isWarningActive = false;
 
+let currentSpeedLevel = 0;
+
+// Upcoming queue
+let upcomingLevels = [];
+
 // The ball currently orbiting and waiting to be dropped
 let previewBall = null;
 let orbitAngle = 0;
@@ -370,7 +375,13 @@ function showStartMessage() {
 }
 
 function spawnPreview() {
-    const level = Math.floor(Math.random() * 4);
+    if (upcomingLevels.length < 1) {
+        upcomingLevels.push(Math.floor(Math.random() * 4));
+    }
+
+    const level = upcomingLevels.shift();
+    upcomingLevels.push(Math.floor(Math.random() * 4));
+
     const radius = BALL_RADII[level];
     const color = BALL_COLORS[level];
 
@@ -381,6 +392,23 @@ function spawnPreview() {
         x: CENTER.x + ORBIT_RADIUS,
         y: CENTER.y
     };
+
+    updateNextPreviewUI();
+}
+
+function updateNextPreviewUI() {
+    const slot1 = document.getElementById('next-ball-1');
+    if (!slot1) return;
+
+    const lvl1 = upcomingLevels[0];
+
+    if (USE_IMAGES) {
+        slot1.style.backgroundImage = `url('assets/${String(lvl1 + 1).padStart(3, '0')}.PNG')`;
+        slot1.style.backgroundColor = 'transparent';
+    } else {
+        slot1.style.backgroundImage = 'none';
+        slot1.style.backgroundColor = BALL_COLORS[lvl1];
+    }
 }
 
 function shoot() {
@@ -439,6 +467,8 @@ function mergeBalls(bodyA, bodyB) {
     score += (newLevel + 1) * 10;
     scoreEl.textContent = score;
 
+    checkLevelUp(score);
+
     // Play Merge Sound
     playSound(mergeSound);
 
@@ -470,6 +500,32 @@ function mergeBalls(bodyA, bodyB) {
     World.add(engine.world, newBody);
 }
 
+function checkLevelUp(currentScore) {
+    if (currentScore < 2000) return;
+    let newLevel = 1 + Math.floor((currentScore - 2000) / 1500);
+    newLevel = Math.min(newLevel, 10);
+
+    if (newLevel > currentSpeedLevel) {
+        currentSpeedLevel = newLevel;
+        orbitSpeed = 0.02 * (1 + 0.1 * currentSpeedLevel);
+        showLevelUpText();
+    }
+}
+
+function showLevelUpText() {
+    const container = document.getElementById('ui-layer');
+    if (!container) return;
+
+    const msg = document.createElement('div');
+    msg.className = 'level-up-container level-up-anim';
+    msg.innerHTML = '<span class="arrow">↑</span><span>level up</span><span class="arrow">↑</span>';
+    container.appendChild(msg);
+
+    setTimeout(() => {
+        if (msg.parentElement) msg.remove();
+    }, 3000);
+}
+
 function endGame() {
     if (isGameOver) return;
     isGameOver = true;
@@ -485,7 +541,10 @@ function resetGame() {
     Engine.clear(engine);
     score = 0;
     scoreEl.textContent = '0';
+    currentSpeedLevel = 0;
+    orbitSpeed = 0.02;
     isGameOver = false;
+    upcomingLevels = [];
     // Hide Header and Footer, Show In-Game UI
     gameHeader.classList.add('hidden');
     gameFooter.classList.add('hidden');

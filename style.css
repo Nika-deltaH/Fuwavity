@@ -280,3 +280,100 @@ canvas {
         transform: translateY(0);
     }
 }
+
+/* Level Up Animation */
+.level-up-container {
+    position: absolute;
+    top: 25%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffeb3b;
+    text-shadow: 0 0 5px #ff9800, 2px 2px 4px #000;
+    opacity: 0;
+}
+
+.level-up-anim {
+    animation: lvlUpPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards,
+        lvlUpFadeOut 0.5s ease-in 1.5s forwards;
+}
+
+.level-up-anim .arrow {
+    display: inline-block;
+    animation: arrowFloat 0.8s ease-out 0.8s forwards;
+}
+
+@keyframes lvlUpPopIn {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+@keyframes lvlUpFadeOut {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes arrowFloat {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-30px);
+        opacity: 0;
+    }
+}
+
+/* Next Balls Preview UI */
+#next-preview-container {
+    position: absolute;
+    top: 5px;
+    right: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: white;
+    font-size: 11px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 8px 10px;
+    border-radius: 15px;
+    backdrop-filter: blur(3px);
+}
+
+.preview-slot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.preview-arrow {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+}
