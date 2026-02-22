@@ -344,6 +344,9 @@ function handleInput(e) {
         const msg = document.getElementById('start-message');
         if (msg) msg.style.display = 'none';
 
+        // Show the next ball preview once game starts
+        updateNextPreviewUI();
+
         // Try play BGM on first interaction
         if (bgm.paused && bgm.volume > 0) {
             bgm.play().catch(e => console.log("BGM waiting for interaction"));
@@ -400,14 +403,19 @@ function updateNextPreviewUI() {
     const slot1 = document.getElementById('next-ball-1');
     if (!slot1) return;
 
-    const lvl1 = upcomingLevels[0];
+    // 遊戲尚未開始前，因為軌道上還沒有球，所以「Next」預覽顯示為第一顆即將出現的球（previewBall）
+    // 遊戲開始後軌道上已經有球了，所以「Next」顯示為再下一顆即將出現的球（upcomingLevels[0]）
+    let lvl = upcomingLevels[0];
+    if (!isPlaying && previewBall) {
+        lvl = previewBall.level;
+    }
 
     if (USE_IMAGES) {
-        slot1.style.backgroundImage = `url('assets/${String(lvl1 + 1).padStart(3, '0')}.PNG')`;
+        slot1.style.backgroundImage = `url('assets/${String(lvl + 1).padStart(3, '0')}.PNG')`;
         slot1.style.backgroundColor = 'transparent';
     } else {
         slot1.style.backgroundImage = 'none';
-        slot1.style.backgroundColor = BALL_COLORS[lvl1];
+        slot1.style.backgroundColor = BALL_COLORS[lvl];
     }
 }
 
