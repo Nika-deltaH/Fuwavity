@@ -371,7 +371,7 @@ function showStartMessage() {
     msg.style.textAlign = 'center';
     msg.style.width = '100%';
     msg.style.color = 'white';
-    msg.style.fontSize = '32px';
+    msg.style.fontSize = '30px';
     msg.style.pointerEvents = 'none';
     msg.style.textShadow = '0 0 10px black';
     msg.style.zIndex = '5';

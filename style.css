@@ -55,10 +55,11 @@ html {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     width: 100%;
     min-height: 100vh;
-    padding: 20px 0;
+    padding-top: calc(env(safe-area-inset-top) + 100px);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 30px);
     box-sizing: border-box;
 }
 
@@ -212,23 +213,26 @@ canvas {
 
 /* Header (Game Over + Score) */
 #game-header {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 20px);
+    left: 0;
+    width: 100%;
     text-align: center;
-    margin-bottom: 30px;
-    /* Gap between Header and Game */
     animation: fadeIn 0.5s;
-    z-index: 10;
+    z-index: 15;
+    pointer-events: none;
 }
 
 #game-header h1 {
-    font-size: 56px;
-    margin: 0 0 10px 0;
+    font-size: 42px;
+    margin: 0 0 5px 0;
     color: #ff4444;
     -webkit-text-stroke: 2px white;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 #game-header p {
-    font-size: 36px;
+    font-size: 28px;
     margin: 0;
     font-weight: bold;
     color: white;
@@ -237,21 +241,23 @@ canvas {
 
 /* Footer (Buttons) */
 #game-footer {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    width: 100%;
     animation: fadeIn 0.5s;
-    margin-top: 30px;
-    /* Gap between Game and Footer */
     display: flex;
-    gap: 15px;
+    gap: 10px;
     justify-content: center;
     flex-wrap: wrap;
-    z-index: 10;
+    z-index: 15;
 }
 
 #game-footer button {
-    padding: 12px 24px;
-    font-size: 18px;
+    padding: 8px 16px;
+    font-size: 15px;
     cursor: pointer;
-    border-radius: 25px;
+    border-radius: 20px;
     border: 2px solid white;
     background: rgba(255, 255, 255, 0.2);
     color: white;
@@ -376,4 +382,28 @@ canvas {
 .preview-arrow {
     color: rgba(255, 255, 255, 0.7);
     font-size: 14px;
+}
+
+/* Footer Links */
+.footer-links {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom) + 20px);
+    left: 0;
+    width: 100%;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+    z-index: 10;
+}
+
+.footer-links a {
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    font-size: 11px;
+    transition: color 0.2s;
+}
+
+.footer-links a:hover {
+    color: white;
 }

@@ -3,11 +3,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Fuwavity</title>
     <link rel="stylesheet" href="style.css">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1817711534988940"
-        crossorigin="anonymous"></script>
 </head>
 
 <body>
@@ -19,13 +18,12 @@
     </div>
 
     <div id="main-wrapper">
-        <!-- Header (Game Over + Score) -->
-        <div id="game-header" class="hidden">
-            <h1>Game Over</h1>
-            <p>Score: <span id="final-score">0</span></p>
-        </div>
-
         <div id="game-container">
+            <!-- Header (Game Over + Score) -->
+            <div id="game-header" class="hidden">
+                <h1>Game Over</h1>
+                <p>Score: <span id="final-score">0</span></p>
+            </div>
             <!-- Canvas will be injected here -->
             <div id="ui-layer">
                 <div id="score-board">Score: <span id="score">0</span></div>
@@ -39,13 +37,12 @@
                     <div id="next-ball-1" class="preview-slot"></div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer (Buttons) -->
-        <div id="game-footer" class="hidden">
-            <button id="retry-btn">Retry</button>
-            <button id="share-btn">Share</button>
-            <button id="screenshot-btn">Save Image</button>
+            <!-- Footer (Buttons) -->
+            <div id="game-footer" class="hidden">
+                <button id="retry-btn">Retry</button>
+                <button id="share-btn">Share</button>
+                <button id="screenshot-btn">Save Image</button>
+            </div>
         </div>
 
         <!-- Settings Modal -->
@@ -62,6 +59,12 @@
                 </div>
                 <button id="close-settings">Close</button>
             </div>
+        </div>
+
+        <div class="footer-links">
+            <a href="https://p.ecpay.com.tw/4D5B9BD" target="_blank">鼓勵Nika</a>
+            <a href="https://ko-fi.com/nikaworx" target="_blank">Support Nika</a>
+            <a href="https://twitter.com/deltah_twi" target="_blank">X (Twitter)</a>
         </div>
     </div>
 
