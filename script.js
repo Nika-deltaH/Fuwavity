@@ -620,6 +620,17 @@ sfxSlider.addEventListener('input', (e) => {
     mergeSound.volume = sfxVolume;
 });
 
+// Handle tab switching / app backgrounding
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        bgm.pause();
+    } else {
+        // Resume BGM if it should be playing (game started and not muted)
+        if (isPlaying && bgmVolume > 0) {
+            bgm.play().catch(e => console.warn("BGM resume failed", e));
+        }
+    }
+});
 
 if (screenshotBtn) {
     screenshotBtn.addEventListener('click', () => {
