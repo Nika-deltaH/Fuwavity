@@ -5,7 +5,7 @@ const GAME_SIZE = 460; // Canvas size (Internal logical size)
 const CENTER = { x: GAME_SIZE / 2, y: GAME_SIZE / 2 };
 const BOWL_RADIUS = 160; // 320px diameter 
 const ORBIT_RADIUS = 200; // 400px diameter 
-const GAMEOVER_RADIUS = 175; // 360px diameter
+const GAMEOVER_RADIUS = 175; // 350px diameter
 const WARNING_TRIGGER_RADIUS = 155; // 310px diameter
 const WARNING_LINE_RADIUS = 160; // 320px diameter
 
@@ -634,57 +634,88 @@ document.addEventListener('visibilitychange', () => {
 
 if (screenshotBtn) {
     screenshotBtn.addEventListener('click', () => {
-        // Manual Screenshot Composition
-        // 1. Create a temporary canvas
-        const captureCanvas = document.createElement('canvas');
-        const gameCanvas = document.querySelector('#game-container canvas'); // Matter.js canvas
-
+        const gameCanvas = document.querySelector('#game-container canvas');
         if (!gameCanvas) {
             alert('Game canvas not found!');
             return;
         }
 
+        const ratio = gameCanvas.width / GAME_SIZE;
+        const captureCanvas = document.createElement('canvas');
+        const headerHeight = 120;
+        const footerHeight = 60;
+
         captureCanvas.width = gameCanvas.width;
-        captureCanvas.height = gameCanvas.height + 150; // Extra height for Header/Footer info
+        captureCanvas.height = (GAME_SIZE + headerHeight + footerHeight) * ratio;
         const ctx = captureCanvas.getContext('2d');
 
-        // 2. Fill Background
-        ctx.fillStyle = '#222';
+        // 1. Fill Background (Match style.css)
+        ctx.fillStyle = '#251e36';
         ctx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
 
-        // 3. Draw Header Info manually (Since we can't capture HTML easily without html2canvas issues)
-        // Center the content vertically/horizontally
+        // 2. Draw Header Area
         const centerX = captureCanvas.width / 2;
 
         ctx.fillStyle = '#ff4444';
-        ctx.font = 'bold 48px Arial';
+        ctx.font = `bold ${48 * ratio}px Arial`;
         ctx.textAlign = 'center';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * ratio;
         ctx.strokeStyle = 'white';
-        ctx.strokeText('Game Over', centerX, 60);
-        ctx.fillText('Game Over', centerX, 60);
+        ctx.strokeText('Game Over', centerX, 60 * ratio);
+        ctx.fillText('Game Over', centerX, 60 * ratio);
 
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 36px Arial';
-        ctx.fillText('Score: ' + score, centerX, 110);
+        ctx.font = `bold ${36 * ratio}px Arial`;
+        ctx.fillText('Score: ' + score, centerX, 105 * ratio);
 
-        // 4. Draw Game Canvas
-        // Position it below the header
-        const gameY = 150;
-        ctx.drawImage(gameCanvas, 0, gameY);
+        // 3. Draw Game Canvas
+        const gameX = 0;
+        const gameY = headerHeight * ratio;
+        ctx.drawImage(gameCanvas, gameX, gameY);
 
-        // 5. Download
-        try {
-            const dataURL = captureCanvas.toDataURL('image/PNG');
-            const link = document.createElement('a');
-            link.download = `ComboGame_Score_${score}.PNG`;
-            link.href = dataURL;
-            link.click();
-        } catch (err) {
-            console.error(err);
-            alert('Screenshot failed. If you are running locally (file://), browsers verify security. Please try on a local server or GitHub Pages.');
+        // 4. Draw Footer Area
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = `${14 * ratio}px Arial`;
+        ctx.fillText('Nika © nikaworx.com', centerX, captureCanvas.height - (20 * ratio));
+
+        // 5. Save/Share
+        const filename = `Fuwavity_Score_${score}.png`;
+
+        // Use Web Share API for "Save to Album" priority on mobile
+        if (navigator.share && navigator.canShare && captureCanvas.toBlob) {
+            captureCanvas.toBlob((blob) => {
+                const file = new File([blob], filename, { type: 'image/png' });
+                if (navigator.canShare({ files: [file] })) {
+                    navigator.share({
+                        files: [file],
+                        title: 'Fuwavity Score',
+                        text: `I scored ${score} in Fuwavity! @deltah_twi`
+                    }).catch(err => {
+                        // Fallback on error or user cancel
+                        downloadImage(captureCanvas, filename);
+                    });
+                } else {
+                    downloadImage(captureCanvas, filename);
+                }
+            }, 'image/png');
+        } else {
+            downloadImage(captureCanvas, filename);
         }
     });
+}
+
+// Helper for classic download
+function downloadImage(canvas, filename) {
+    try {
+        const dataURL = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = dataURL;
+        link.click();
+    } catch (err) {
+        console.error(err);
+        alert('Screenshot failed. Please try again.');
+    }
 }
 
 if (shareBtn) {
