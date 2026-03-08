@@ -65,11 +65,42 @@ const sfxSlider = document.getElementById('sfx-volume');
 const loadingScreen = document.getElementById('loading-screen');
 const loadingProgress = document.getElementById('loading-progress');
 
-// Audio
+// Audio Context for Mobile Volume Support
+let audioCtx, bgmGain, sfxGain;
+const sfxBuffers = {};
+
 const bgm = new Audio('assets/bgm.mp3');
 bgm.loop = true;
-const clickSound = new Audio('assets/click.mp3');
-const mergeSound = new Audio('assets/merge.mp3');
+
+// Placeholder references for SFX names
+const clickSound = 'click';
+const mergeSound = 'merge';
+
+// Audio Init Volume
+let bgmVolume = 0.5;
+let sfxVolume = 1.0;
+
+async function initWebAudio() {
+    if (audioCtx) return;
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        bgmGain = audioCtx.createGain();
+        sfxGain = audioCtx.createGain();
+
+        bgmGain.connect(audioCtx.destination);
+        sfxGain.connect(audioCtx.destination);
+
+        bgmGain.gain.value = bgmVolume;
+        sfxGain.gain.value = sfxVolume;
+
+        // Route BGM <audio> through Web Audio
+        const source = audioCtx.createMediaElementSource(bgm);
+        source.connect(bgmGain);
+    } catch (e) {
+        console.warn("Web Audio API not supported", e);
+    }
+}
 
 // Asset Lists
 const IMAGES_TO_LOAD = [
@@ -79,18 +110,13 @@ const IMAGES_TO_LOAD = [
 ];
 const ASSET_IMAGES = {}; // Cache for preloaded images
 
-// Audio Init Volume
-let bgmVolume = 0.5;
-let sfxVolume = 1.0;
-
-bgm.volume = bgmVolume;
-clickSound.volume = sfxVolume;
-mergeSound.volume = sfxVolume;
-
 async function preloadAssets() {
     let loadedCount = 0;
-    const totalAssets = IMAGES_TO_LOAD.length; // Intentionally only tracking images for visual loading bar
-    // Audio preloading is less visual, but we can try to fetch them too.
+    const SFX_TO_LOAD = [
+        { name: 'click', src: 'assets/click.mp3' },
+        { name: 'merge', src: 'assets/merge.mp3' }
+    ];
+    const totalAssets = IMAGES_TO_LOAD.length + SFX_TO_LOAD.length;
 
     const updateProgress = () => {
         loadedCount++;
@@ -100,23 +126,34 @@ async function preloadAssets() {
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
                 init();
-            }, 500); // Small delay for smoothness
+            }, 500);
         }
     };
 
+    // Load Images
     IMAGES_TO_LOAD.forEach(src => {
         const img = new Image();
         img.onload = () => {
-            // Extract simple filename key (e.g., '001')
             const key = src.split('/').pop().split('.')[0];
             ASSET_IMAGES[key] = img;
             updateProgress();
         };
-        img.onerror = (e) => {
-            console.error('Failed to load image:', src, e);
-            updateProgress(); // Continue anyway to avoid hanging
-        };
+        img.onerror = () => updateProgress();
         img.src = src;
+    });
+
+    // Load SFX for Web Audio
+    SFX_TO_LOAD.forEach(async (sfx) => {
+        try {
+            const response = await fetch(sfx.src);
+            const arrayBuffer = await response.arrayBuffer();
+            sfx.data = arrayBuffer;
+            sfxBuffers[sfx.name] = sfx.data; // Store raw data first
+            updateProgress();
+        } catch (e) {
+            console.error("SFX Load Error", e);
+            updateProgress();
+        }
     });
 }
 
@@ -335,21 +372,34 @@ function init() {
 
 let lastShotBodyId = null;
 
-function handleInput(e) {
+async function handleInput(e) {
     if (e.target.tagName === 'BUTTON' || e.target.parentElement.tagName === 'BUTTON') return;
     if (e.type === 'touchstart') e.preventDefault();
     if (isGameOver) return;
+
+    // Mobile Audio Unlock
+    if (!audioCtx) {
+        await initWebAudio();
+        // Decode SFX now that we have a context
+        for (let name in sfxBuffers) {
+            if (sfxBuffers[name] instanceof ArrayBuffer) {
+                const data = sfxBuffers[name];
+                sfxBuffers[name] = await audioCtx.decodeAudioData(data);
+            }
+        }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
 
     if (!isPlaying) {
         isPlaying = true;
         const msg = document.getElementById('start-message');
         if (msg) msg.style.display = 'none';
 
-        // Show the next ball preview once game starts
         updateNextPreviewUI();
 
-        // Try play BGM on first interaction
-        if (bgm.paused && bgm.volume > 0) {
+        if (bgm.paused && bgmVolume > 0) {
             bgm.play().catch(e => console.log("BGM waiting for interaction"));
         }
     }
@@ -572,12 +622,14 @@ function resetGame() {
     spawnPreview();
 }
 
-// Helper to play SFX (clone node to allow overlapping)
-function playSound(audio) {
-    if (audio.volume > 0) {
-        const clone = audio.cloneNode();
-        clone.volume = audio.volume;
-        clone.play().catch(e => console.warn('Audio play failed', e));
+// Helper to play SFX (Web Audio)
+function playSound(name) {
+    if (sfxVolume > 0 && sfxBuffers[name] && sfxBuffers[name] instanceof AudioBuffer) {
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        const source = audioCtx.createBufferSource();
+        source.buffer = sfxBuffers[name];
+        source.connect(sfxGain);
+        source.start(0);
     }
 }
 
@@ -608,16 +660,22 @@ if (closeSettingsBtn) {
 
 bgmSlider.addEventListener('input', (e) => {
     bgmVolume = e.target.value / 100;
-    bgm.volume = bgmVolume;
-    if (bgmVolume > 0 && bgm.paused) {
+    if (bgmGain) {
+        bgmGain.gain.setTargetAtTime(bgmVolume, audioCtx.currentTime, 0.05);
+    } else {
+        bgm.volume = bgmVolume; // Fallback
+    }
+
+    if (bgmVolume > 0 && bgm.paused && isPlaying) {
         bgm.play().catch(e => console.warn("BGM play failed", e));
     }
 });
 
 sfxSlider.addEventListener('input', (e) => {
     sfxVolume = e.target.value / 100;
-    clickSound.volume = sfxVolume;
-    mergeSound.volume = sfxVolume;
+    if (sfxGain) {
+        sfxGain.gain.setTargetAtTime(sfxVolume, audioCtx.currentTime, 0.05);
+    }
 });
 
 // Handle tab switching / app backgrounding
