@@ -81,6 +81,7 @@ canvas {
     max-width: 460px;
     /* Logical size cap */
     max-height: 460px;
+    touch-action: none;
 }
 
 #ui-layer {
@@ -161,44 +162,89 @@ canvas {
 }
 
 .modal-content {
-    background: #333;
-    padding: 30px;
-    border-radius: 15px;
-    border: 2px solid #555;
+    background: #3e3852;
+    /* Slightly brighter for #6c6192 theme */
+    padding: 30px 25px;
+    border-radius: 20px;
+    border: 2px solid #6c6192;
     text-align: center;
+    color: #edebf2;
+    /* Brighter text */
+    min-width: 240px;
+    /* Narrower */
+    max-width: 230px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+    position: relative;
+}
+
+.close-x {
+    position: absolute;
+    top: 15px;
+    right: 17px;
+    background: transparent;
+    border: none;
+    color: #9088ab;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+}
+
+.close-x:hover {
     color: white;
-    min-width: 250px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    transform: scale(1.1);
 }
 
 .setting-item {
-    margin: 20px 0;
+    margin: 18px 0;
+    text-align: left;
 }
 
 .setting-item label {
     display: block;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #b5adc9;
     font-weight: bold;
 }
 
 .setting-item input[type="range"] {
     width: 100%;
     cursor: pointer;
+    accent-color: #6c6192;
 }
 
-#close-settings {
-    margin-top: 20px;
-    padding: 8px 20px;
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
+.modal-links {
+    margin-top: 25px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 20px;
+}
+
+.link-btn {
+    background: #4e4863;
+    color: #edebf2;
+    text-decoration: none;
+    font-size: 12px;
     font-weight: bold;
+    padding: 10px 4px;
+    border-radius: 10px;
+    transition: background 0.2s, transform 0.1s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid #6c6192;
 }
 
-#close-settings:hover {
-    background: #45a049;
+.link-btn:hover {
+    background: #6c6192;
+    color: white;
+}
+
+.link-btn:active {
+    transform: scale(0.97);
 }
 
 /* Removed GO Button styling or hidden it */

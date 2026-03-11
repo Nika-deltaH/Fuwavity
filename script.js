@@ -1,53 +1,50 @@
-const { Engine, Render, Runner, World, Bodies, Body, Events, Composite, Vector, Detector } = Matter;
+const { Engine, Render, World, Bodies, Body, Events, Composite, Vector, Detector, Common } = Matter;
 
 // Configuration
-const GAME_SIZE = 460; // Canvas size (Internal logical size)
+const GAME_SIZE = 460;
 const CENTER = { x: GAME_SIZE / 2, y: GAME_SIZE / 2 };
-const BOWL_RADIUS = 160; // 320px diameter 
-const ORBIT_RADIUS = 200; // 400px diameter 
-const GAMEOVER_RADIUS = 175; // 350px diameter
-const WARNING_TRIGGER_RADIUS = 155; // 310px diameter
-const WARNING_LINE_RADIUS = 160; // 320px diameter
+const BOWL_RADIUS = 160;
+const ORBIT_RADIUS = 200;
+const GAMEOVER_RADIUS = 175;
+const WARNING_TRIGGER_RADIUS = 155;
+const WARNING_LINE_RADIUS = 160;
 
-// Sizes: 25, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130 (Diameters)
-// Radii: 12.5, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65
 const BALL_RADII = [12.5, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65];
-
-// Placeholder Colors
 const BALL_COLORS = [
     '#FF3333', '#FF9933', '#FFFF33', '#33FF33', '#33FFFF',
     '#3333FF', '#9933FF', '#FF33FF', '#FFFFFF', '#000000',
     '#FF5733', '#33FF57'
 ];
 
-// --- IMAGE REPLACEMENT CONFIGURATION ---
-// To use images:
-// 1. Put images named 001.PNG... 012.PNG in the 'assets' folder.
-// 2. Set USE_IMAGES = true;
 const USE_IMAGES = true;
-// ---------------------------------------
 
+// Performance Loop Variables
 let engine;
 let render;
-let runner;
+let lastTime = 0;
+let accumulator = 0;
+const fixedTimeStep = 1000 / 60; // 16.67ms
+const maxUpdates = 2; // Circuit Breaker
+
+// Game State
 let score = 0;
 let isGameOver = false;
 let isPlaying = false;
+let isPaused = false;
 let isWarningActive = false;
-
 let currentSpeedLevel = 0;
-
-// Upcoming queue
 let upcomingLevels = [];
-
-// The ball currently orbiting and waiting to be dropped
 let previewBall = null;
-let spawnTimeoutId = null;
 let orbitAngle = 0;
 let orbitSpeed = 0.02;
+let lastShotBodyId = null;
+
+// Input Cooldown (Frame-based)
+let spawnCooldownFrames = 0;
+const SPAWN_COOLDOWN_LIMIT = 30; // ~0.5s at 60fps
 
 // Elements
-const scoreEl = document.getElementById('score'); // Live Score
+const scoreEl = document.getElementById('score');
 const finalScoreEl = document.getElementById('final-score');
 const gameHeader = document.getElementById('game-header');
 const gameFooter = document.getElementById('game-footer');
@@ -55,8 +52,7 @@ const retryBtn = document.getElementById('retry-btn');
 const retryBtnTop = document.getElementById('retry-btn-top');
 const shareBtn = document.getElementById('share-btn');
 const screenshotBtn = document.getElementById('screenshot-btn');
-const mainWrapper = document.getElementById('main-wrapper');
-const uiLayer = document.getElementById('ui-layer'); // In-Game UI
+const uiLayer = document.getElementById('ui-layer');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings');
@@ -65,50 +61,79 @@ const sfxSlider = document.getElementById('sfx-volume');
 const loadingScreen = document.getElementById('loading-screen');
 const loadingProgress = document.getElementById('loading-progress');
 
-// Audio Context for Mobile Volume Support
+// Asset Cache
+const ASSET_IMAGES = {};
+const IMAGES_TO_LOAD = Array.from({ length: 12 }, (_, i) => `assets/${String(i + 1).padStart(3, '0')}.PNG`);
+
+// Audio
 let audioCtx, bgmGain, sfxGain;
 const sfxBuffers = {};
-
 const bgm = new Audio('assets/bgm.mp3');
 bgm.loop = true;
-
-// Placeholder references for SFX names
-const clickSound = 'click';
-const mergeSound = 'merge';
-
-// Audio Init Volume
 let bgmVolume = 0.5;
 let sfxVolume = 1.0;
 
-async function initWebAudio() {
-    if (audioCtx) return;
-    try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
-        bgmGain = audioCtx.createGain();
-        sfxGain = audioCtx.createGain();
+// Object Pooling
+const ballPool = [];
+function getBallFromBody(body) { return body.gameEntity; }
 
-        bgmGain.connect(audioCtx.destination);
-        sfxGain.connect(audioCtx.destination);
+class BallEntity {
+    constructor() {
+        this.isActive = false;
+        this.body = Bodies.circle(0, 0, 10, {
+            restitution: 0.2, // Lower bounce for stability
+            friction: 0.3,    // High friction to "lock" groups together
+            frictionAir: 0.03,
+            slop: 0.1,        // Higher slop reduces jitter
+            render: { visible: false }
+        });
+        this.body.gameEntity = this;
+        this.level = 0;
+        this.isPopping = false;
+        this.popScale = 1;
+        this.assetImg = null;
+    }
 
-        bgmGain.gain.value = bgmVolume;
-        sfxGain.gain.value = sfxVolume;
+    init(x, y, level) {
+        this.isActive = true;
+        this.level = level;
+        this.isPopping = false;
+        this.popScale = 1;
+        this.body.id = Common.nextId();
+        this.body.level = level;
+        this.assetImg = ASSET_IMAGES[String(level + 1).padStart(3, '0')];
 
-        // Route BGM <audio> through Web Audio
-        const source = audioCtx.createMediaElementSource(bgm);
-        source.connect(bgmGain);
-    } catch (e) {
-        console.warn("Web Audio API not supported", e);
+        const radius = BALL_RADII[level];
+        const scaleFactor = radius / this.body.circleRadius;
+
+        Body.setPosition(this.body, { x, y });
+        Body.setVelocity(this.body, { x: 0, y: 0 });
+        Body.setAngularVelocity(this.body, 0);
+        Body.scale(this.body, scaleFactor, scaleFactor);
+
+        this.body.collisionFilter.mask = 0xFFFFFFFF;
+        this.body.collisionFilter.category = 0x0001;
+
+        World.add(engine.world, this.body);
+    }
+
+    deactivate() {
+        if (!this.isActive) return;
+        this.isActive = false;
+        World.remove(engine.world, this.body);
     }
 }
 
-// Asset Lists
-const IMAGES_TO_LOAD = [
-    'assets/001.PNG', 'assets/002.PNG', 'assets/003.PNG', 'assets/004.PNG',
-    'assets/005.PNG', 'assets/006.PNG', 'assets/007.PNG', 'assets/008.PNG',
-    'assets/009.PNG', 'assets/010.PNG', 'assets/011.PNG', 'assets/012.PNG'
-];
-const ASSET_IMAGES = {}; // Cache for preloaded images
+// Pool Management
+function spawnFromPool(x, y, level) {
+    let entity = ballPool.find(e => !e.isActive);
+    if (!entity) {
+        entity = new BallEntity();
+        ballPool.push(entity);
+    }
+    entity.init(x, y, level);
+    return entity;
+}
 
 async function preloadAssets() {
     let loadedCount = 0;
@@ -130,7 +155,6 @@ async function preloadAssets() {
         }
     };
 
-    // Load Images
     IMAGES_TO_LOAD.forEach(src => {
         const img = new Image();
         img.onload = () => {
@@ -138,34 +162,29 @@ async function preloadAssets() {
             ASSET_IMAGES[key] = img;
             updateProgress();
         };
-        img.onerror = () => updateProgress();
+        img.onerror = updateProgress;
         img.src = src;
     });
 
-    // Load SFX for Web Audio
-    SFX_TO_LOAD.forEach(async (sfx) => {
+    for (const sfx of SFX_TO_LOAD) {
         try {
             const response = await fetch(sfx.src);
-            const arrayBuffer = await response.arrayBuffer();
-            sfx.data = arrayBuffer;
-            sfxBuffers[sfx.name] = sfx.data; // Store raw data first
+            sfxBuffers[sfx.name] = await response.arrayBuffer();
             updateProgress();
         } catch (e) {
-            console.error("SFX Load Error", e);
             updateProgress();
         }
-    });
+    }
 }
 
 function init() {
-    // Create Engine
     engine = Engine.create({
-        positionIterations: 6, // Optimization: Balanced accuracy (default 6)
-        velocityIterations: 4  // Optimization: Balanced stability (default 4)
+        positionIterations: 10,
+        velocityIterations: 4,
+        enableSleeping: false // Disable sleeping for better late-game collective stability
     });
     engine.world.gravity.y = 0;
 
-    // Create Renderer
     render = Render.create({
         element: document.getElementById('game-container'),
         engine: engine,
@@ -174,275 +193,257 @@ function init() {
             height: GAME_SIZE,
             wireframes: false,
             background: 'transparent',
-            // IMPORTANT: For images to look good when scaled
-            // Optimization: Cap pixelRatio at 2 to prevent massive GPU load on phones (3x/4x screens)
             pixelRatio: Math.min(window.devicePixelRatio, 2)
         }
     });
 
-    // Create Runner
-    runner = Runner.create();
-    Runner.run(runner, engine);
-    Render.run(render);
+    // Start Custom Loop
+    requestAnimationFrame(gameLoop);
 
-    // Initial message
     showStartMessage();
-
-    // Ensure Init State: Header/Footer hidden, UI shown (but msg covers it)
     gameHeader.classList.add('hidden');
     gameFooter.classList.add('hidden');
     uiLayer.classList.remove('hidden');
 
-    // Custom Rendering for Bowl and Orbit
+    // Rendering Layer
     Events.on(render, 'afterRender', () => {
         const ctx = render.context;
-
-        // Draw Bowl Background
-        ctx.beginPath();
-        ctx.arc(CENTER.x, CENTER.y, BOWL_RADIUS, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Draw Orbit
-        ctx.beginPath();
-        ctx.arc(CENTER.x, CENTER.y, ORBIT_RADIUS, 0, 2 * Math.PI);
-        ctx.setLineDash([10, 10]);
-        ctx.setLineDash([10, 10]);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Draw Warning Line
-        if (isWarningActive && !isGameOver) {
-            ctx.beginPath();
-            ctx.arc(CENTER.x, CENTER.y, WARNING_LINE_RADIUS, 0, 2 * Math.PI);
-            ctx.setLineDash([15, 15]);
-            ctx.strokeStyle = '#FF0000';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-
-        // Draw Preview Ball
-        if (previewBall && isPlaying) {
-            if (USE_IMAGES) {
-                // Image Rendering using Cached Object
-                const imageIndex = String(previewBall.level + 1).padStart(3, '0');
-
-                if (ASSET_IMAGES[imageIndex]) {
-                    const img = ASSET_IMAGES[imageIndex];
-                    const size = previewBall.radius * 2;
-                    ctx.save();
-                    ctx.translate(previewBall.x, previewBall.y);
-                    ctx.drawImage(img, -previewBall.radius, -previewBall.radius, size, size);
-                    ctx.restore();
-                } else {
-                    // Fallback if not loaded (shouldn't happen with preloader)
-                    ctx.beginPath();
-                    ctx.arc(previewBall.x, previewBall.y, previewBall.radius, 0, 2 * Math.PI);
-                    ctx.fillStyle = previewBall.color;
-                    ctx.fill();
-                }
-            } else {
-                // Fallback Color Mode
-                ctx.beginPath();
-                ctx.arc(previewBall.x, previewBall.y, previewBall.radius, 0, 2 * Math.PI);
-                ctx.fillStyle = previewBall.color;
-                ctx.fill();
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
-        }
+        drawEnvironment(ctx);
+        drawPreview(ctx);
+        drawActiveBalls(ctx);
     });
 
-    // Physics Loop Updates
-    Events.on(engine, 'beforeUpdate', () => {
-        if (isGameOver) return;
-
-        // Orbit Logic
-        orbitAngle -= orbitSpeed; // Counter-Clockwise
-        if (previewBall) {
-            previewBall.x = CENTER.x + Math.cos(orbitAngle) * ORBIT_RADIUS;
-            previewBall.y = CENTER.y + Math.sin(orbitAngle) * ORBIT_RADIUS;
-        }
-
-        // Apply Central Gravity and Check Warning/Game Over
-        let warningTriggered = false;
-        const bodies = Composite.allBodies(engine.world);
-
-        bodies.forEach(body => {
-            if (body.isStatic) return;
-
-            // Vector to center
-            const dx = CENTER.x - body.position.x;
-            const dy = CENTER.y - body.position.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            // Gravity
-            if (distance > 10) {
-                // Adaptive Gravity: Strong far away, weak near center to prevent crushing/jitter
-                let gravityStrength = 0.001;
-                if (distance < 40) gravityStrength = 0.0003;
-
-                const forceMagnitude = gravityStrength * body.mass;
-                Body.applyForce(body, body.position, {
-                    x: (dx / distance) * forceMagnitude,
-                    y: (dy / distance) * forceMagnitude
-                });
-            }
-
-            // Stabilization / Braking
-            if (body.speed < 1 && !body.isStatic) {
-                // 1. Slow down gradually (95% speed per frame)
-                Body.setVelocity(body, {
-                    x: body.velocity.x * 0.95,
-                    y: body.velocity.y * 0.95
-                });
-
-                // 2. Final Stop: If it's crawling very slow, force it to stop
-                if (body.speed < 0.03) {
-                    Body.setVelocity(body, { x: 0, y: 0 });
-                    Body.setAngularVelocity(body, 0);
-                }
-            }
-
-
-
-            // Check Distances
-            const edgeDist = distance + body.circleRadius;
-
-            // Warning Check
-            if (edgeDist > WARNING_TRIGGER_RADIUS) {
-                if (body.id !== (lastShotBodyId || -1)) {
-                    warningTriggered = true;
-                } else if (body.speed < 2) {
-                    warningTriggered = true;
-                }
-            }
-
-            // Game Over Check
-            if (edgeDist > GAMEOVER_RADIUS) {
-                if (body.speed < 0.2 && body.id !== (lastShotBodyId || -1)) {
-                    endGame();
-                }
-            }
-
-            // Pop Animation
-            if (body.isPopping) {
-                const targetRadius = BALL_RADII[body.level];
-                if (body.circleRadius > targetRadius + 0.5) {
-                    const scaleFactor = 0.95;
-                    Body.scale(body, scaleFactor, scaleFactor);
-                } else {
-                    body.isPopping = false;
-                }
-            }
-        });
-
-        isWarningActive = warningTriggered;
-    });
-
-    // Collision & Merge Logic
+    // Collision Detection
     Events.on(engine, 'collisionStart', (event) => {
         const pairs = event.pairs;
         for (let i = 0; i < pairs.length; i++) {
             const bodyA = pairs[i].bodyA;
             const bodyB = pairs[i].bodyB;
-
             if (bodyA.level !== undefined && bodyB.level !== undefined) {
-                if (bodyA.level === bodyB.level && bodyA.level < 11) { // 12 levels (0-11)
+                if (bodyA.level === bodyB.level && bodyA.level < 11) {
                     mergeBalls(bodyA, bodyB);
                 }
             }
         }
     });
 
-    // Input Handling (Click Anywhere)
-    const container = document.getElementById('game-container');
-    container.addEventListener('mousedown', handleInput);
-    container.addEventListener('touchstart', handleInput, { passive: false });
+    const canvas = render.canvas;
+    canvas.style.touchAction = 'none'; // Optimization 3: Input Resilience
+    canvas.addEventListener('pointerdown', handleInput);
 
     spawnPreview();
 }
 
-let lastShotBodyId = null;
+// Optimization 1: Custom High-Performance Loop
+function gameLoop(time) {
+    if (lastTime === 0) lastTime = time;
+    const deltaTime = time - lastTime;
+    lastTime = time;
 
-async function handleInput(e) {
-    if (e.target.tagName === 'BUTTON' || e.target.parentElement.tagName === 'BUTTON') return;
-    if (e.type === 'touchstart') e.preventDefault();
-    if (isGameOver) return;
+    if (!isPaused) {
+        accumulator += deltaTime;
+        let updates = 0;
 
-    // Mobile Audio Unlock
-    if (!audioCtx) {
-        await initWebAudio();
-        // Decode SFX now that we have a context
-        for (let name in sfxBuffers) {
-            if (sfxBuffers[name] instanceof ArrayBuffer) {
-                const data = sfxBuffers[name];
-                sfxBuffers[name] = await audioCtx.decodeAudioData(data);
+        // Fixed physics step
+        while (accumulator >= fixedTimeStep && updates < maxUpdates) {
+            updatePhysics();
+            accumulator -= fixedTimeStep;
+            updates++;
+        }
+
+        // Overflow protection: if updates hits maxUpdates, 
+        // we drop the extra time to keep UI responsive (Circuit Breaker)
+        if (updates >= maxUpdates) accumulator = 0;
+    }
+
+    // Rendering always runs if not paused or specifically required
+    Render.world(render);
+    requestAnimationFrame(gameLoop);
+}
+
+function updatePhysics() {
+    if (isGameOver || !isPlaying) return;
+
+    // Cooldown
+    if (spawnCooldownFrames > 0) spawnCooldownFrames--;
+
+    // Orbit
+    orbitAngle -= orbitSpeed;
+    if (previewBall) {
+        previewBall.x = CENTER.x + Math.cos(orbitAngle) * ORBIT_RADIUS;
+        previewBall.y = CENTER.y + Math.sin(orbitAngle) * ORBIT_RADIUS;
+    }
+
+    const bodies = Composite.allBodies(engine.world);
+    let warningTriggered = false;
+
+    for (const body of bodies) {
+        if (body.isStatic) continue;
+
+        const dx = CENTER.x - body.position.x;
+        const dy = CENTER.y - body.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Simplified Stable Gravity (Fix: No complex falloff to avoid Late-game jitter)
+        if (distance > 4) {
+            const levelBoost = 1 + (currentSpeedLevel * 0.06);
+            const forceMag = 0.0016 * body.mass * levelBoost;
+            const unitForce = forceMag / distance;
+            Body.applyForce(body, body.position, { x: dx * unitForce, y: dy * unitForce });
+        }
+
+        // Global Damping (Fix: Simple reliable energy drain)
+        if (body.speed < 1.0) {
+            Body.setVelocity(body, { x: body.velocity.x * 0.94, y: body.velocity.y * 0.94 });
+            if (body.speed < 0.1) {
+                Body.setVelocity(body, { x: 0, y: 0 });
+                Body.setAngularVelocity(body, 0);
+            }
+        }
+
+        // Boundary Check
+        const edgeDist = distance + body.circleRadius;
+        if (edgeDist > WARNING_TRIGGER_RADIUS) {
+            if (body.id !== lastShotBodyId || body.speed < 2) warningTriggered = true;
+        }
+
+        if (edgeDist > GAMEOVER_RADIUS && body.speed < 0.2 && body.id !== lastShotBodyId) {
+            endGame();
+        }
+
+        // Pop Logic (Visual only)
+        const entity = getBallFromBody(body);
+        if (entity && entity.isPopping) {
+            entity.popScale *= 0.92;
+            if (entity.popScale < 1.05) {
+                entity.isPopping = false;
+                entity.popScale = 1;
             }
         }
     }
-    if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
+
+    isWarningActive = warningTriggered;
+    Engine.update(engine, fixedTimeStep);
+}
+
+function drawEnvironment(ctx) {
+    // Bowl
+    ctx.beginPath();
+    ctx.arc(CENTER.x, CENTER.y, BOWL_RADIUS, 0, 2 * Math.PI);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Orbit
+    ctx.beginPath();
+    ctx.arc(CENTER.x, CENTER.y, ORBIT_RADIUS, 0, 2 * Math.PI);
+    ctx.setLineDash([10, 10]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Warning
+    if (isWarningActive && !isGameOver) {
+        ctx.beginPath();
+        ctx.arc(CENTER.x, CENTER.y, WARNING_LINE_RADIUS, 0, 2 * Math.PI);
+        ctx.setLineDash([15, 15]);
+        ctx.strokeStyle = '#FF0000';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.setLineDash([]);
     }
+}
+
+function drawPreview(ctx) {
+    if (!previewBall || !isPlaying) return;
+    const key = String(previewBall.level + 1).padStart(3, '0');
+    const img = ASSET_IMAGES[key];
+    const r = previewBall.radius;
+    if (img) {
+        ctx.drawImage(img, previewBall.x - r, previewBall.y - r, r * 2, r * 2);
+    } else {
+        ctx.beginPath();
+        ctx.arc(previewBall.x, previewBall.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = previewBall.color;
+        ctx.fill();
+    }
+}
+
+function drawActiveBalls(ctx) {
+    for (const entity of ballPool) {
+        if (!entity.isActive) continue;
+        const b = entity.body;
+        const r = BALL_RADII[entity.level] * entity.popScale;
+
+        ctx.save();
+        ctx.translate(b.position.x, b.position.y);
+        ctx.rotate(b.angle);
+        if (entity.assetImg) {
+            ctx.drawImage(entity.assetImg, -r, -r, r * 2, r * 2);
+        } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fillStyle = BALL_COLORS[entity.level];
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+function handleInput(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+    if (isGameOver) return;
+
+    // Audio Unlock (Immediate Synchronous Logic to preserve gesture)
+    if (!audioCtx) {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            bgmGain = audioCtx.createGain();
+            sfxGain = audioCtx.createGain();
+            bgmGain.connect(audioCtx.destination);
+            sfxGain.connect(audioCtx.destination);
+            bgmGain.gain.value = bgmVolume;
+            sfxGain.gain.value = sfxVolume;
+
+            const source = audioCtx.createMediaElementSource(bgm);
+            source.connect(bgmGain);
+
+            // Background decode without blocking
+            Object.keys(sfxBuffers).forEach(async name => {
+                if (sfxBuffers[name] instanceof ArrayBuffer) {
+                    const data = sfxBuffers[name];
+                    sfxBuffers[name] = await audioCtx.decodeAudioData(data);
+                }
+            });
+        } catch (err) { console.warn(err); }
+    }
+    if (audioCtx?.state === 'suspended') audioCtx.resume();
 
     if (!isPlaying) {
         isPlaying = true;
         const msg = document.getElementById('start-message');
         if (msg) msg.style.display = 'none';
-
         updateNextPreviewUI();
-
-        if (bgm.paused && bgmVolume > 0) {
-            bgm.play().catch(e => console.log("BGM waiting for interaction"));
-        }
+        if (bgmVolume > 0) bgm.play().catch(() => { });
     }
 
     shoot();
 }
 
-function showStartMessage() {
-    const existingMsg = document.getElementById('start-message');
-    if (existingMsg) existingMsg.remove();
-
-    const msg = document.createElement('div');
-    msg.id = 'start-message';
-    msg.innerHTML = "<h1>Tap Anywhere<br>to Start</h1>";
-    msg.style.position = 'absolute';
-    msg.style.top = '50%';
-    msg.style.left = '50%';
-    msg.style.transform = 'translate(-50%, -50%)';
-    msg.style.textAlign = 'center';
-    msg.style.width = '100%';
-    msg.style.color = 'white';
-    msg.style.fontSize = '30px';
-    msg.style.pointerEvents = 'none';
-    msg.style.textShadow = '0 0 10px black';
-    msg.style.zIndex = '5';
-    document.getElementById('game-container').appendChild(msg);
-}
-
 function spawnPreview() {
-    if (upcomingLevels.length < 1) {
+    // Ensure we have at least 2 levels in the queue (one for current orbiter, one for next preview)
+    while (upcomingLevels.length < 2) {
         upcomingLevels.push(Math.floor(Math.random() * 4));
     }
 
     const level = upcomingLevels.shift();
-    upcomingLevels.push(Math.floor(Math.random() * 4));
-
-    const radius = BALL_RADII[level];
-    const color = BALL_COLORS[level];
 
     previewBall = {
         level: level,
-        radius: radius,
-        color: color,
+        radius: BALL_RADII[level],
+        color: BALL_COLORS[level],
         x: CENTER.x + ORBIT_RADIUS,
         y: CENTER.y
     };
@@ -450,162 +451,111 @@ function spawnPreview() {
     updateNextPreviewUI();
 }
 
-function updateNextPreviewUI() {
-    const slot1 = document.getElementById('next-ball-1');
-    if (!slot1) return;
-
-    // 遊戲尚未開始前，因為軌道上還沒有球，所以「Next」預覽顯示為第一顆即將出現的球（previewBall）
-    // 遊戲開始後軌道上已經有球了，所以「Next」顯示為再下一顆即將出現的球（upcomingLevels[0]）
-    let lvl = upcomingLevels[0];
-    if (!isPlaying && previewBall) {
-        lvl = previewBall.level;
-    }
-
-    if (USE_IMAGES) {
-        slot1.style.backgroundImage = `url('assets/${String(lvl + 1).padStart(3, '0')}.PNG')`;
-        slot1.style.backgroundColor = 'transparent';
-    } else {
-        slot1.style.backgroundImage = 'none';
-        slot1.style.backgroundColor = BALL_COLORS[lvl];
-    }
-}
-
 function shoot() {
-    if (!previewBall || isGameOver) return;
+    if (!previewBall || isGameOver || spawnCooldownFrames > 0) return;
 
-    const renderConfig = USE_IMAGES ? {
-        sprite: {
-            texture: `assets/${String(previewBall.level + 1).padStart(3, '0')}.PNG`,
-            xScale: (previewBall.radius * 2) / 250, // Source: 250px
-            yScale: (previewBall.radius * 2) / 250
-        }
-    } : {
-        fillStyle: previewBall.color
-    };
-
-    const body = Bodies.circle(previewBall.x, previewBall.y, previewBall.radius, {
-        restitution: 0.4,
-        friction: 0.05,
-        frictionAir: 0.03,
-        render: renderConfig
-    });
-
-    body.level = previewBall.level;
-    lastShotBodyId = body.id;
+    const entity = spawnFromPool(previewBall.x, previewBall.y, previewBall.level);
+    lastShotBodyId = entity.body.id;
 
     const dx = CENTER.x - previewBall.x;
     const dy = CENTER.y - previewBall.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const speed = 6;
 
-    Body.setVelocity(body, {
-        x: (dx / dist) * speed,
-        y: (dy / dist) * speed
-    });
+    Body.setVelocity(entity.body, { x: (dx / dist) * speed, y: (dy / dist) * speed });
 
-    // Play Shoot Sound
-    playSound(clickSound);
-
-    World.add(engine.world, body);
-
-    if (spawnTimeoutId) {
-        clearTimeout(spawnTimeoutId);
-    }
+    playSound('click');
     previewBall = null;
-    spawnTimeoutId = setTimeout(spawnPreview, 500);
+    spawnCooldownFrames = SPAWN_COOLDOWN_LIMIT;
+    setTimeout(spawnPreview, 500); // UI delay for preview
 }
 
 function mergeBalls(bodyA, bodyB) {
-    if (bodyA.isRemoved || bodyB.isRemoved) return;
-    bodyA.isRemoved = true;
-    bodyB.isRemoved = true;
+    const entA = getBallFromBody(bodyA);
+    const entB = getBallFromBody(bodyB);
+    if (!entA || !entB || !entA.isActive || !entB.isActive) return;
 
     const midX = (bodyA.position.x + bodyB.position.x) / 2;
     const midY = (bodyA.position.y + bodyB.position.y) / 2;
     const newLevel = bodyA.level + 1;
 
-    World.remove(engine.world, [bodyA, bodyB]);
+    entA.deactivate();
+    entB.deactivate();
 
     score += (newLevel + 1) * 10;
     scoreEl.textContent = score;
-
     checkLevelUp(score);
+    playSound('merge');
 
-    // Play Merge Sound
-    playSound(mergeSound);
+    const newEnt = spawnFromPool(midX, midY, newLevel);
 
-    const radius = BALL_RADII[newLevel];
+    // Soften big ball merges to prevent "explosive" popping in crowded bowl
+    if (newLevel > 8) {
+        newEnt.body.restitution = 0.1;
+        setTimeout(() => { if (newEnt.isActive) newEnt.body.restitution = 0.3; }, 200);
+    }
 
-    const renderConfig = USE_IMAGES ? {
-        sprite: {
-            texture: `assets/${String(newLevel + 1).padStart(3, '0')}.PNG`,
-            xScale: (radius * 2) / 250, // Source: 250px
-            yScale: (radius * 2) / 250
-        }
-    } : {
-        fillStyle: BALL_COLORS[newLevel]
-    };
+    newEnt.popScale = 1.3;
+    newEnt.isPopping = true;
 
-    const newBody = Bodies.circle(midX, midY, radius, {
-        restitution: 0.3,
-        friction: 0.05,
-        frictionAir: 0.02,
-        render: renderConfig
-    });
-    newBody.level = newLevel;
-    Body.setVelocity(newBody, { x: (Math.random() - 0.5), y: (Math.random() - 0.5) });
+    Body.setVelocity(newEnt.body, { x: (Math.random() - 0.5), y: (Math.random() - 0.5) });
+}
 
-    // Pop Animation
-    Body.scale(newBody, 1.1, 1.1);
-    newBody.isPopping = true;
+function updateNextPreviewUI() {
+    const slot1 = document.getElementById('next-ball-1');
+    const container = document.getElementById('next-preview-container');
+    if (!slot1 || !container) return;
 
-    World.add(engine.world, newBody);
+    if (!isPlaying) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+
+    // Always show the next ball in the queue (index 0 of upcomingLevels)
+    const lvl = (upcomingLevels && upcomingLevels.length > 0) ? upcomingLevels[0] : 0;
+
+    if (USE_IMAGES) {
+        const imagePath = `assets/${String(lvl + 1).padStart(3, '0')}.PNG`;
+        slot1.style.backgroundImage = `url("${imagePath}")`;
+        slot1.style.backgroundColor = 'transparent';
+    } else {
+        slot1.style.backgroundImage = 'none';
+        slot1.style.backgroundColor = BALL_COLORS[lvl] || '#fff';
+    }
 }
 
 function checkLevelUp(currentScore) {
     if (currentScore < 2000) return;
-    let newLevel = 1 + Math.floor((currentScore - 2000) / 1500);
-    newLevel = Math.min(newLevel, 10);
-
+    let newLevel = Math.min(1 + Math.floor((currentScore - 2000) / 1500), 10);
     if (newLevel > currentSpeedLevel) {
         currentSpeedLevel = newLevel;
-        orbitSpeed = 0.02 * (1 + 0.1 * currentSpeedLevel);
+        orbitSpeed = 0.02 * (1 + 0.12 * currentSpeedLevel);
         showLevelUpText();
     }
 }
 
 function showLevelUpText() {
     const container = document.getElementById('ui-layer');
-    if (!container) return;
-
     const msg = document.createElement('div');
     msg.className = 'level-up-container level-up-anim';
     msg.innerHTML = '<span class="arrow">↑</span><span>level up</span><span class="arrow">↑</span>';
     container.appendChild(msg);
-
-    setTimeout(() => {
-        if (msg.parentElement) msg.remove();
-    }, 3000);
+    setTimeout(() => msg.remove(), 3000);
 }
 
 function endGame() {
     if (isGameOver) return;
     isGameOver = true;
     finalScoreEl.textContent = score;
-    // Show Header and Footer, Hide In-Game UI
     gameHeader.classList.remove('hidden');
     gameFooter.classList.remove('hidden');
     uiLayer.classList.add('hidden');
 }
 
 function resetGame() {
-    if (spawnTimeoutId) {
-        clearTimeout(spawnTimeoutId);
-        spawnTimeoutId = null;
-    }
-
-    World.clear(engine.world);
-    Engine.clear(engine);
+    ballPool.forEach(e => e.deactivate());
     score = 0;
     scoreEl.textContent = '0';
     currentSpeedLevel = 0;
@@ -613,19 +563,18 @@ function resetGame() {
     isGameOver = false;
     upcomingLevels = [];
     previewBall = null;
-    // Hide Header and Footer, Show In-Game UI
+    isPlaying = false;
+    spawnCooldownFrames = 0;
+
     gameHeader.classList.add('hidden');
     gameFooter.classList.add('hidden');
     uiLayer.classList.remove('hidden');
-    isPlaying = false;
     showStartMessage();
     spawnPreview();
 }
 
-// Helper to play SFX (Web Audio)
 function playSound(name) {
-    if (sfxVolume > 0 && sfxBuffers[name] && sfxBuffers[name] instanceof AudioBuffer) {
-        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (sfxVolume > 0 && sfxBuffers[name] instanceof AudioBuffer) {
         const source = audioCtx.createBufferSource();
         source.buffer = sfxBuffers[name];
         source.connect(sfxGain);
@@ -633,167 +582,122 @@ function playSound(name) {
     }
 }
 
+function showStartMessage() {
+    const old = document.getElementById('start-message');
+    if (old) old.remove();
+    const msg = document.createElement('div');
+    msg.id = 'start-message';
+    msg.innerHTML = "<h1>Tap Anywhere<br>to Start</h1>";
+    Object.assign(msg.style, {
+        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        textAlign: 'center', width: '100%', color: 'white', fontSize: '30px',
+        pointerEvents: 'none', textShadow: '0 0 10px black', zIndex: '5'
+    });
+    document.getElementById('game-container').appendChild(msg);
+}
+
 // Global UI Handlers
-if (retryBtnTop) retryBtnTop.addEventListener('click', resetGame);
-if (retryBtn) retryBtn.addEventListener('click', resetGame);
-
-// Settings UI Handlers
-if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => {
-        settingsModal.classList.remove('hidden');
-        settingsModal.style.display = 'flex';
-        // Pause game? Maybe not, keep it flowing
-    });
-}
-
-if (closeSettingsBtn) {
-    closeSettingsBtn.addEventListener('click', () => {
-        settingsModal.classList.add('hidden');
-        settingsModal.style.display = 'none';
-
-        // Ensure BGM starts if it wasn't playing (user interaction)
-        if (bgm.paused && bgm.volume > 0) {
-            bgm.play().catch(e => console.warn("BGM autoplay prevented", e));
-        }
-    });
-}
+retryBtnTop?.addEventListener('click', resetGame);
+retryBtn?.addEventListener('click', resetGame);
+settingsBtn?.addEventListener('click', () => { settingsModal.classList.remove('hidden'); settingsModal.style.display = 'flex'; });
+closeSettingsBtn?.addEventListener('click', () => { settingsModal.classList.add('hidden'); settingsModal.style.display = 'none'; });
 
 bgmSlider.addEventListener('input', (e) => {
     bgmVolume = e.target.value / 100;
-    if (bgmGain) {
-        bgmGain.gain.setTargetAtTime(bgmVolume, audioCtx.currentTime, 0.05);
-    } else {
-        bgm.volume = bgmVolume; // Fallback
-    }
-
-    if (bgmVolume > 0 && bgm.paused && isPlaying) {
-        bgm.play().catch(e => console.warn("BGM play failed", e));
-    }
+    if (bgmGain) bgmGain.gain.setTargetAtTime(bgmVolume, audioCtx.currentTime, 0.05);
 });
 
 sfxSlider.addEventListener('input', (e) => {
     sfxVolume = e.target.value / 100;
-    if (sfxGain) {
-        sfxGain.gain.setTargetAtTime(sfxVolume, audioCtx.currentTime, 0.05);
-    }
+    if (sfxGain) sfxGain.gain.setTargetAtTime(sfxVolume, audioCtx.currentTime, 0.05);
 });
 
-// Handle tab switching / app backgrounding
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
         bgm.pause();
+        isPaused = true;
     } else {
-        // Resume BGM if it should be playing (game started and not muted)
-        if (isPlaying && bgmVolume > 0) {
-            bgm.play().catch(e => console.warn("BGM resume failed", e));
-        }
+        if (isPlaying && bgmVolume > 0) bgm.play();
+        isPaused = false;
+        lastTime = performance.now();
     }
 });
 
 if (screenshotBtn) {
     screenshotBtn.addEventListener('click', () => {
         const gameCanvas = document.querySelector('#game-container canvas');
-        if (!gameCanvas) {
-            alert('Game canvas not found!');
-            return;
-        }
-
-        const ratio = gameCanvas.width / GAME_SIZE;
+        if (!gameCanvas) return;
         const captureCanvas = document.createElement('canvas');
-        const headerHeight = 120;
-        const footerHeight = 60;
-
+        const headerHeight = 120, footerHeight = 60;
+        const ratio = gameCanvas.width / GAME_SIZE;
         captureCanvas.width = gameCanvas.width;
         captureCanvas.height = (GAME_SIZE + headerHeight + footerHeight) * ratio;
         const ctx = captureCanvas.getContext('2d');
-
-        // 1. Fill Background (Match style.css)
         ctx.fillStyle = '#251e36';
         ctx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
-
-        // 2. Draw Header Area
         const centerX = captureCanvas.width / 2;
-
         ctx.fillStyle = '#ff4444';
         ctx.font = `bold ${48 * ratio}px Arial`;
         ctx.textAlign = 'center';
-        ctx.lineWidth = 2 * ratio;
         ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2 * ratio;
         ctx.strokeText('Game Over', centerX, 60 * ratio);
         ctx.fillText('Game Over', centerX, 60 * ratio);
-
         ctx.fillStyle = 'white';
         ctx.font = `bold ${36 * ratio}px Arial`;
         ctx.fillText('Score: ' + score, centerX, 105 * ratio);
-
-        // 3. Draw Game Canvas
-        const gameX = 0;
-        const gameY = headerHeight * ratio;
-        ctx.drawImage(gameCanvas, gameX, gameY);
-
-        // 4. Draw Footer Area
+        ctx.drawImage(gameCanvas, 0, headerHeight * ratio);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.font = `${14 * ratio}px Arial`;
         ctx.fillText('Nika © nikaworx.com', centerX, captureCanvas.height - (20 * ratio));
 
-        // 5. Save/Share
         const filename = `Fuwavity_Score_${score}.png`;
 
-        // Use Web Share API for "Save to Album" priority on mobile
-        if (navigator.share && navigator.canShare && captureCanvas.toBlob) {
-            captureCanvas.toBlob((blob) => {
-                const file = new File([blob], filename, { type: 'image/png' });
-                if (navigator.canShare({ files: [file] })) {
+        // Check if device is truly capable of sharing files (mostly mobile only)
+        const canShareFiles = navigator.canShare && navigator.canShare({
+            files: [new File([], 't.png', { type: 'image/png' })]
+        });
+
+        if (canShareFiles && captureCanvas.toBlob) {
+            captureCanvas.toBlob(blob => {
+                try {
+                    const file = new File([blob], filename, { type: 'image/png' });
                     navigator.share({
                         files: [file],
                         title: 'Fuwavity Score',
-                        text: `I scored ${score} in Fuwavity! @deltah_twi`
-                    }).catch(err => {
-                        // Fallback on error or user cancel
-                        downloadImage(captureCanvas, filename);
-                    });
-                } else {
+                        text: `I scored ${score} in Fuwavity!`
+                    }).catch(() => downloadImage(captureCanvas, filename));
+                } catch (e) {
                     downloadImage(captureCanvas, filename);
                 }
-            }, 'image/png');
+            });
         } else {
-            downloadImage(captureCanvas, filename);
+            // Standard desktop/older browser download
+            try {
+                downloadImage(captureCanvas, filename);
+            } catch (e) {
+                console.error("Save image failed: Canvas might be tainted. Use a local server.", e);
+                alert("Please use a local server (like Live Server) to enable screenshot saving.");
+            }
         }
     });
 }
 
-// Helper for classic download
 function downloadImage(canvas, filename) {
-    try {
-        const dataURL = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = filename;
-        link.href = dataURL;
-        link.click();
-    } catch (err) {
-        console.error(err);
-        alert('Screenshot failed. Please try again.');
-    }
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
 }
 
 if (shareBtn) {
     shareBtn.addEventListener('click', () => {
         const url = "https://nikaworx.com/Fuwavity/";
-        const msg = `I scored ${score} in Fuwavity! Can you beat me?`;
-
-        if (navigator.share) {
-            navigator.share({
-                title: 'Fuwavity',
-                text: msg,
-                url: url
-            }).catch(err => console.error("Share failed", err));
-        } else {
-            navigator.clipboard.writeText(`${msg} ${url}`);
-            alert('Copied to clipboard!');
-        }
+        const msg = `I scored ${score} in Fuwavity!`;
+        if (navigator.share) navigator.share({ title: 'Fuwavity', text: msg, url });
+        else { navigator.clipboard.writeText(`${msg} ${url}`); alert('Copied!'); }
     });
 }
 
-// Start
-// init(); // Removed, called by preloadAssets
 preloadAssets();
+
