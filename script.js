@@ -229,7 +229,7 @@ function init() {
 
     const canvas = render.canvas;
     canvas.style.touchAction = 'none'; // Optimization 3: Input Resilience
-    canvas.addEventListener('pointerdown', handleInput);
+    window.addEventListener('pointerdown', handleInput);
 
     spawnPreview();
 }
@@ -393,8 +393,8 @@ function drawActiveBalls(ctx) {
 }
 
 function handleInput(e) {
-    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-    if (isGameOver) return;
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.modal-content')) return;
+    if (isGameOver || isPaused) return;
 
     // Audio Unlock (Immediate Synchronous Logic to preserve gesture)
     if (!audioCtx) {
@@ -599,8 +599,17 @@ function showStartMessage() {
 // Global UI Handlers
 retryBtnTop?.addEventListener('click', resetGame);
 retryBtn?.addEventListener('click', resetGame);
-settingsBtn?.addEventListener('click', () => { settingsModal.classList.remove('hidden'); settingsModal.style.display = 'flex'; });
-closeSettingsBtn?.addEventListener('click', () => { settingsModal.classList.add('hidden'); settingsModal.style.display = 'none'; });
+settingsBtn?.addEventListener('click', () => { 
+    settingsModal.classList.remove('hidden'); 
+    settingsModal.style.display = 'flex'; 
+    isPaused = true;
+});
+closeSettingsBtn?.addEventListener('click', () => { 
+    settingsModal.classList.add('hidden'); 
+    settingsModal.style.display = 'none'; 
+    isPaused = false;
+    lastTime = performance.now(); // Reset lastTime to avoid jump in physics
+});
 
 bgmSlider.addEventListener('input', (e) => {
     bgmVolume = e.target.value / 100;
